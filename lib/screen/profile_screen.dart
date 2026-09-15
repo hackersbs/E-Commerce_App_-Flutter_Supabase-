@@ -1,16 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/auth_provider.dart';
+import 'auth_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Dummy user data
-    const String userName = 'John Doe';
-    const String phoneNumber = '+1 234 567 8900';
-    const String address = '123 Main Street, Cityville, Country';
-    const String orderDetails = 'Order #12345 - Shipped\nOrder #12344 - Delivered';
-    final String firstLetter = userName.isNotEmpty ? userName[0].toUpperCase() : '?';
+    final user = context.watch<AuthProvider>().currentUser;
+    final userName = user?.username ?? 'User';
+    final phoneNumber = user?.phone.isNotEmpty == true
+        ? user!.phone
+        : 'Not provided';
+    final address = [
+      user?.address,
+      user?.city,
+      user?.state,
+      user?.country,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
+    const String orderDetails =
+        'Order #12345 - Shipped\nOrder #12344 - Delivered';
+    final String firstLetter = userName.isNotEmpty
+        ? userName[0].toUpperCase()
+        : '?';
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -25,7 +39,11 @@ class ProfileScreen extends StatelessWidget {
               backgroundColor: Colors.blueAccent,
               child: Text(
                 firstLetter,
-                style: const TextStyle(fontSize: 40, color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 40,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -38,8 +56,11 @@ class ProfileScreen extends StatelessWidget {
             // Phone Number
             _buildInfoCard(Icons.phone, 'Phone Number', phoneNumber),
             const SizedBox(height: 16),
-            // Address
-            _buildInfoCard(Icons.location_on, 'Address', address),
+            _buildInfoCard(
+              Icons.location_on,
+              'Address',
+              address.isEmpty ? 'Not provided' : address,
+            ),
             const SizedBox(height: 16),
             // Order Details
             _buildInfoCard(Icons.shopping_bag, 'Order Details', orderDetails),
@@ -49,9 +70,10 @@ class ProfileScreen extends StatelessWidget {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // Handle logout action
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Logging out...')),
+                  context.read<AuthProvider>().logout();
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
                   );
                 },
                 icon: const Icon(Icons.logout),
@@ -96,12 +118,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    content,
-                    style: const TextStyle(
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text(content, style: const TextStyle(fontSize: 16)),
                 ],
               ),
             ),
