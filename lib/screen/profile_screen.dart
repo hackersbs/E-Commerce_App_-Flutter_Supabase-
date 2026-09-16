@@ -20,8 +20,6 @@ class ProfileScreen extends StatelessWidget {
       user?.state,
       user?.country,
     ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
-    const String orderDetails =
-        'Order #12345 - Shipped\nOrder #12344 - Delivered';
     final String firstLetter = userName.isNotEmpty
         ? userName[0].toUpperCase()
         : '?';
@@ -61,9 +59,6 @@ class ProfileScreen extends StatelessWidget {
               'Address',
               address.isEmpty ? 'Not provided' : address,
             ),
-            const SizedBox(height: 16),
-            // Order Details
-            _buildInfoCard(Icons.shopping_bag, 'Order Details', orderDetails),
             const SizedBox(height: 40),
             // Logout Button
             SizedBox(

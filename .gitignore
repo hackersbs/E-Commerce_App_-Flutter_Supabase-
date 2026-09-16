@@ -32,6 +32,10 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.env
+/PROJECT_DOCUMENTATION.md
+/supabase/
+/windows/
 
 # Symbolication related
 app.*.symbols

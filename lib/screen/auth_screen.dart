@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/cart_provider.dart';
+import '../providers/product_provider.dart';
+import 'seller_home_screen.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,33 +16,58 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _login() {
+  Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final loggedIn = context.read<AuthProvider>().login(
-      _usernameController.text,
+    final authProvider = context.read<AuthProvider>();
+    final productProvider = context.read<ProductProvider>();
+    final cartProvider = context.read<CartProvider>();
+    final loginError = await authProvider.login(
+      _emailController.text,
       _passwordController.text,
     );
-    if (!loggedIn) {
+    if (!mounted) return;
+    if (loginError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid username or password')),
+        SnackBar(
+          content: Text(loginError),
+          action: loginError.contains('confirm')
+              ? SnackBarAction(
+                  label: 'Resend',
+                  onPressed: () async {
+                    final error = await authProvider.resendConfirmation(
+                      _emailController.text,
+                    );
+                    if (!mounted || error == null) return;
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(error)));
+                  },
+                )
+              : null,
+        ),
       );
       return;
     }
+    await productProvider.loadProducts();
+    await cartProvider.loadCart();
+    if (!mounted) return;
 
+    final destination = authProvider.currentUser?.role == 'seller'
+        ? const SellerHomeScreen()
+        : const HomeScreen();
     Navigator.of(context)
-        .pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+        .pushReplacement(MaterialPageRoute(builder: (_) => destination));
   }
 
   Future<void> _openSignup() async {
@@ -79,15 +107,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 28),
                   TextFormField(
-                    controller: _usernameController,
+                    controller: _emailController,
                     decoration: const InputDecoration(
-                      labelText: 'Username',
-                      prefixIcon: Icon(Icons.person_outline),
+                      labelText: 'Email address',
+                      prefixIcon: Icon(Icons.email_outlined),
                       border: OutlineInputBorder(),
                     ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Enter your username'
-                        : null,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Enter your email address';
+                      }
+                      if (!value.contains('@')) return 'Enter a valid email';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -126,12 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _openSignup,
                     child: const Text('Create a new account'),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Demo accounts\nSeller: sachu / sa123\nBuyer: sachubs / sa123',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
                 ],
               ),
             ),
@@ -151,6 +177,7 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -167,6 +194,7 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     for (final controller in [
       _usernameController,
+      _emailController,
       _passwordController,
       _confirmPasswordController,
       _phoneController,
@@ -184,25 +212,24 @@ class _SignupScreenState extends State<SignupScreen> {
     return value == null || value.trim().isEmpty ? 'Enter your $label' : null;
   }
 
-  void _signup() {
+  Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final created = context.read<AuthProvider>().register(
-      AppUser(
-        username: _usernameController.text,
-        password: _passwordController.text,
-        role: _role,
-        phone: _phoneController.text.trim(),
-        country: _countryController.text.trim(),
-        state: _stateController.text.trim(),
-        city: _cityController.text.trim(),
-        address: _addressController.text.trim(),
-      ),
+    final errorMessage = await context.read<AuthProvider>().register(
+      email: _emailController.text.trim(),
+      username: _usernameController.text,
+      password: _passwordController.text,
+      role: _role,
+      phone: _phoneController.text.trim(),
+      country: _countryController.text.trim(),
+      state: _stateController.text.trim(),
+      city: _cityController.text.trim(),
+      address: _addressController.text.trim(),
     );
-    if (!created) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That username is already registered')),
-      );
+    if (!mounted) return;
+    if (errorMessage != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(errorMessage)));
       return;
     }
 
@@ -218,6 +245,23 @@ class _SignupScreenState extends State<SignupScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            TextFormField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                prefixIcon: Icon(Icons.email_outlined),
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Enter your email address';
+                }
+                if (!value.contains('@')) return 'Enter a valid email';
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
             TextFormField(
               controller: _usernameController,
               decoration: const InputDecoration(

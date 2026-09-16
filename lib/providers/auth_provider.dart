@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AppUser {
+  final String id;
+  final String email;
   final String username;
-  final String password;
   final String role;
   final String phone;
   final String country;
@@ -11,8 +13,9 @@ class AppUser {
   final String address;
 
   const AppUser({
+    required this.id,
+    required this.email,
     required this.username,
-    required this.password,
     required this.role,
     this.phone = '',
     this.country = '',
@@ -20,56 +23,148 @@ class AppUser {
     this.city = '',
     this.address = '',
   });
+
+  factory AppUser.fromMap(Map<String, dynamic> map) => AppUser(
+    id: map['id'] as String,
+    email: map['email'] as String? ?? '',
+    username: map['username'] as String,
+    role: (map['role'] as String).toLowerCase(),
+    phone: map['phone'] as String? ?? '',
+    country: map['country'] as String? ?? '',
+    state: map['state'] as String? ?? '',
+    city: map['city'] as String? ?? '',
+    address: map['address'] as String? ?? '',
+  );
 }
 
 class AuthProvider extends ChangeNotifier {
-  final Map<String, AppUser> _users = {
-    'sachu': const AppUser(
-      username: 'sachu',
-      password: 'sa123',
-      role: 'Seller',
-    ),
-    'sachubs': const AppUser(
-      username: 'sachubs',
-      password: 'sa123',
-      role: 'Buyer',
-    ),
-  };
-
+  final SupabaseClient _supabase = Supabase.instance.client;
   AppUser? _currentUser;
+  bool _isCheckingSession = true;
+
+  AuthProvider() {
+    _restoreSession();
+    _supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedOut) {
+        _currentUser = null;
+        notifyListeners();
+      }
+    });
+  }
 
   AppUser? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
+  bool get isCheckingSession => _isCheckingSession;
 
-  bool login(String username, String password) {
-    final normalizedUsername = username.trim().toLowerCase();
-    final user = _users[normalizedUsername];
-    if (user == null || user.password != password) return false;
-
-    _currentUser = user;
-    notifyListeners();
-    return true;
+  Future<void> _restoreSession() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user != null) await _loadProfile(user.id);
+    } finally {
+      _isCheckingSession = false;
+      notifyListeners();
+    }
   }
 
-  bool register(AppUser user) {
-    final normalizedUsername = user.username.trim().toLowerCase();
-    if (_users.containsKey(normalizedUsername)) return false;
-
-    _users[normalizedUsername] = AppUser(
-      username: normalizedUsername,
-      password: user.password,
-      role: user.role,
-      phone: user.phone,
-      country: user.country,
-      state: user.state,
-      city: user.city,
-      address: user.address,
-    );
-    notifyListeners();
-    return true;
+  Future<String?> login(String email, String password) async {
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim(),
+        password: password,
+      );
+      if (response.user == null) return 'Could not sign in.';
+      await _loadProfile(response.user!.id);
+      return _currentUser == null ? 'Could not load your profile.' : null;
+    } on AuthException catch (error) {
+      return _friendlyAuthError(error.message);
+    } on PostgrestException catch (error) {
+      return 'Signed in, but your profile could not be loaded: ${error.message}';
+    }
   }
 
-  void logout() {
+  Future<String?> resendConfirmation(String email) async {
+    try {
+      await _supabase.auth.resend(type: OtpType.signup, email: email.trim());
+      return null;
+    } on AuthException catch (error) {
+      return _friendlyAuthError(error.message);
+    }
+  }
+
+  Future<String?> register({
+    required String email,
+    required String username,
+    required String password,
+    required String role,
+    required String phone,
+    required String country,
+    required String state,
+    required String city,
+    required String address,
+  }) async {
+    try {
+      final response = await _supabase.auth.signUp(
+        email: email.trim(),
+        password: password,
+        data: {
+          'username': username.trim().toLowerCase(),
+          'role': role.toLowerCase(),
+          'phone': phone,
+          'country': country,
+          'state': state,
+          'city': city,
+          'address': address,
+        },
+      );
+      if (response.user == null) {
+        return 'Supabase did not create the account.';
+      }
+      if (response.user!.identities?.isEmpty ?? false) {
+        return 'This username is already registered.';
+      }
+      // Signup should return to the Login screen, even when email confirmation
+      // is disabled and Supabase creates a session immediately.
+      if (response.session != null) {
+        await _supabase.auth.signOut();
+      }
+      return null;
+    } on AuthException catch (error) {
+      return _friendlyAuthError(error.message);
+    }
+  }
+
+  String _friendlyAuthError(String message) {
+    final normalized = message.toLowerCase();
+    if (normalized.contains('rate limit') ||
+        normalized.contains('too many requests')) {
+      return 'Supabase email limit reached. Disable email confirmation in '
+          'Supabase Auth settings for this username demo, or wait for the '
+          'limit to reset.';
+    }
+    if (normalized.contains('invalid email')) {
+      return 'Enter a valid email address.';
+    }
+    if (normalized.contains('email not confirmed')) {
+      return 'Please confirm your email address before signing in. Check your inbox.';
+    }
+    if (normalized.contains('invalid login credentials')) {
+      return 'The email or password is incorrect.';
+    }
+    return message;
+  }
+
+  Future<void> _loadProfile(String userId) async {
+    final profile = await _supabase
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .single();
+    _currentUser = AppUser.fromMap(profile);
+    notifyListeners();
+  }
+
+  Future<void> logout() async {
+    await _supabase.auth.signOut();
     _currentUser = null;
     notifyListeners();
   }

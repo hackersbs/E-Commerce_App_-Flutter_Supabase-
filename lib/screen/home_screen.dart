@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../widgets/product_card.dart';
 import '../widgets/bottom_navigation.dart';
-import '../models/product.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+import '../providers/product_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,7 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody() {
     // Show the grid only on the "Home" tab
     if (_selectedIndex == 0) {
-      final searchResults = products
+      final availableProducts = context.watch<ProductProvider>().items;
+      final searchResults = availableProducts
           .where(
             (product) =>
                 product.name.toLowerCase().contains(_searchQuery.toLowerCase()),
@@ -86,17 +88,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   )
                 : Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                            childAspectRatio: 0.60,
-                          ),
-                      itemCount: searchResults.length,
-                      itemBuilder: (context, index) {
-                        return ProductCard(product: searchResults[index]);
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final columns = constraints.maxWidth < 500 ? 2 : 3;
+                        return GridView.builder(
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: columns == 2 ? 0.72 : 0.60,
+                              ),
+                          itemCount: searchResults.length,
+                          itemBuilder: (context, index) {
+                            return ProductCard(product: searchResults[index]);
+                          },
+                        );
                       },
                     ),
                   ),
