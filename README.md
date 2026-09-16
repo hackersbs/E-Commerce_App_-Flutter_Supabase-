@@ -71,16 +71,6 @@ SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_OR_ANON_KEY
 The `.env` file is ignored by Git and must contain only the Supabase
 publishable/anon key. Never use a Supabase service-role key in a Flutter app.
 
-## Database Setup
-
-1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the Supabase SQL Editor.
-3. Configure **Authentication > Providers > Email**. Disable email confirmation
-	 for quick testing, or configure SMTP for production.
-4. For an existing database, run `supabase/fix_reviews_policy.sql`.
-5. For an old unconfirmed test account, run
-	 `supabase/confirm_existing_user.sql` after replacing its placeholder email.
-
 ## Run the App
 
 This project is configured for Android only. Install the Android SDK, connect
