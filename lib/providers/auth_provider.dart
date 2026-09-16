@@ -73,8 +73,10 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
       if (response.user == null) return 'Could not sign in.';
-      await _loadProfile(response.user!.id);
-      return _currentUser == null ? 'Could not load your profile.' : null;
+      final profileLoaded = await _loadProfile(response.user!.id);
+      return profileLoaded
+          ? null
+          : 'Your account has no profile yet. Run the Supabase profile repair SQL, then sign in again.';
     } on AuthException catch (error) {
       return _friendlyAuthError(error.message);
     } on PostgrestException catch (error) {
@@ -153,14 +155,20 @@ class AuthProvider extends ChangeNotifier {
     return message;
   }
 
-  Future<void> _loadProfile(String userId) async {
+  Future<bool> _loadProfile(String userId) async {
     final profile = await _supabase
         .from('profiles')
         .select()
         .eq('id', userId)
-        .single();
+        .maybeSingle();
+    if (profile == null) {
+      _currentUser = null;
+      notifyListeners();
+      return false;
+    }
     _currentUser = AppUser.fromMap(profile);
     notifyListeners();
+    return true;
   }
 
   Future<void> logout() async {
